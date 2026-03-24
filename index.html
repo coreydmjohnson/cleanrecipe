@@ -286,9 +286,91 @@
     .saved-meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
     .saved-del { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 8px; font-size: 18px; flex-shrink: 0; }
     .saved-del:hover { color: var(--danger); }
+    /* ── Cook Mode ── */
+    .cook-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #0f0e0d;
+      z-index: 200;
+      flex-direction: column;
+      color: #f5f0e8;
+      font-family: inherit;
+    }
+    .cook-overlay.active { display: flex; }
+    .cook-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: rgba(0,0,0,.6);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      flex-shrink: 0;
+    }
+    .cook-title { font-size: 14px; font-weight: 600; color: #c8bfaa; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cook-close { background: rgba(255,255,255,.1); border: none; color: #f5f0e8; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .cook-progress-bar { height: 3px; background: rgba(255,255,255,.1); flex-shrink: 0; }
+    .cook-progress-fill { height: 100%; background: var(--accent); transition: width .3s ease; }
+    .cook-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 28px;
+      text-align: center;
+      overflow: hidden;
+    }
+    .cook-step-num { font-size: 13px; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px; font-weight: 700; }
+    .cook-step-text {
+      font-size: clamp(22px, 5vw, 30px);
+      font-weight: 600;
+      line-height: 1.5;
+      color: #f5f0e8;
+      max-width: 560px;
+    }
+    .cook-step-text .qty {
+      background: rgba(45,106,79,.35);
+      color: #7ecfa4;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-weight: 700;
+    }
+    .cook-footer {
+      display: flex;
+      gap: 12px;
+      padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+      flex-shrink: 0;
+    }
+    .cook-nav-btn {
+      flex: 1;
+      padding: 16px;
+      border-radius: 14px;
+      border: 1.5px solid rgba(255,255,255,.15);
+      background: rgba(255,255,255,.05);
+      color: #f5f0e8;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .cook-nav-btn:hover { background: rgba(255,255,255,.1); }
+    .cook-nav-btn.next-btn { background: var(--accent); border-color: var(--accent); }
+    .cook-nav-btn.done-btn { background: #2d6a4f; border-color: #2d6a4f; }
+    .cook-wake-badge {
+      position: absolute;
+      top: 16px;
+      right: 70px;
+      background: rgba(45,106,79,.3);
+      color: #7ecfa4;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 700;
+    }
     /* ── Print ── */
     @media print {
-      header, .tabs, .extract-form, .recipe-actions, .page:not(.active) { display: none !important; }
+      header, .tabs, .extract-form, .recipe-actions, .page:not(.active), .cook-overlay { display: none !important; }
       .recipe-card { border: none; box-shadow: none; }
       .recipe-body { padding: 0; }
       body { background: white; }
@@ -325,6 +407,26 @@
 <!-- Saved page -->
 <div class="page content" id="page-saved">
   <div id="saved-list" class="saved-list"></div>
+</div>
+
+<!-- ── Cook Mode Overlay ── -->
+<div class="cook-overlay" id="cook-overlay">
+  <div class="cook-header">
+    <div class="cook-title" id="cook-title">Recipe</div>
+    <div class="cook-wake-badge" id="wake-badge" style="display:none">☀️ Screen on</div>
+    <button class="cook-close" onclick="exitCookMode()">✕ Exit</button>
+  </div>
+  <div class="cook-progress-bar">
+    <div class="cook-progress-fill" id="cook-progress"></div>
+  </div>
+  <div class="cook-body">
+    <div class="cook-step-num" id="cook-step-num"></div>
+    <div class="cook-step-text" id="cook-step-text"></div>
+  </div>
+  <div class="cook-footer">
+    <button class="cook-nav-btn" id="cook-prev" onclick="cookPrev()">← Back</button>
+    <button class="cook-nav-btn next-btn" id="cook-next" onclick="cookNext()">Next →</button>
+  </div>
 </div>
 
 <script>
@@ -423,7 +525,8 @@ function renderRecipe(r, container) {
         ${ingredientsHTML}
         ${stepsHTML}
         <div class="recipe-actions">
-          <button class="btn" onclick="saveRecipe(${JSON.stringify(JSON.stringify(r))})">💾 Save Recipe</button>
+          <button class="btn" onclick="startCookMode(${JSON.stringify(JSON.stringify(r))})">👨‍🍳 Cook Mode</button>
+          <button class="btn" onclick="saveRecipe(${JSON.stringify(JSON.stringify(r))})">💾 Save</button>
           <button class="btn-outline" onclick="window.print()">🖨 Print</button>
           <button class="btn-outline" onclick="document.getElementById('url-input').value='';document.getElementById('result-area').innerHTML=''">✕ Clear</button>
         </div>
@@ -451,6 +554,64 @@ function updateSavedCount() {
 }
 updateSavedCount();
 
+// ── Cook Mode ─────────────────────────────────────────────────────────────────
+let cookSteps = [], cookIdx = 0, wakeLock = null;
+
+function highlightQty(text) {
+  return text.replace(
+    /(\d+[\d\/½¼¾⅓⅔\s]*(?:cups?|tbsp?|tsp?|tablespoons?|teaspoons?|oz|ounces?|lbs?|pounds?|grams?|g|kg|ml|minutes?|mins?|hours?|hrs?|seconds?))/gi,
+    '<span class="qty">$1</span>'
+  );
+}
+
+function startCookMode(jsonStr) {
+  const r = JSON.parse(jsonStr);
+  if (!r.steps || !r.steps.length) { alert('No steps found for this recipe.'); return; }
+  cookSteps = r.steps;
+  cookIdx   = 0;
+  document.getElementById('cook-title').textContent = r.title || 'Recipe';
+  document.getElementById('cook-overlay').classList.add('active');
+  renderCookStep();
+  acquireWakeLock();
+}
+
+function renderCookStep() {
+  const total = cookSteps.length, step = cookSteps[cookIdx];
+  document.getElementById('cook-step-num').textContent  = `Step ${cookIdx+1} of ${total}`;
+  document.getElementById('cook-step-text').innerHTML   = highlightQty(esc(step));
+  document.getElementById('cook-progress').style.width  = ((cookIdx+1)/total*100)+'%';
+  document.getElementById('cook-prev').style.visibility = cookIdx===0 ? 'hidden' : 'visible';
+  const nb = document.getElementById('cook-next');
+  if (cookIdx === total-1) { nb.textContent='🎉 Done!'; nb.className='cook-nav-btn done-btn'; nb.onclick=exitCookMode; }
+  else { nb.textContent='Next →'; nb.className='cook-nav-btn next-btn'; nb.onclick=cookNext; }
+}
+
+function cookNext() { if (cookIdx < cookSteps.length-1) { cookIdx++; renderCookStep(); } }
+function cookPrev() { if (cookIdx > 0) { cookIdx--; renderCookStep(); } }
+function exitCookMode() { document.getElementById('cook-overlay').classList.remove('active'); releaseWakeLock(); }
+
+let _cookTX = 0;
+document.addEventListener('touchstart', e => { if (document.getElementById('cook-overlay').classList.contains('active')) _cookTX = e.touches[0].clientX; });
+document.addEventListener('touchend',   e => {
+  if (!document.getElementById('cook-overlay').classList.contains('active')) return;
+  const dx = e.changedTouches[0].clientX - _cookTX;
+  if (dx < -60) cookNext(); else if (dx > 60) cookPrev();
+});
+
+async function acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    document.getElementById('wake-badge').style.display = 'block';
+    wakeLock.addEventListener('release', () => { document.getElementById('wake-badge').style.display='none'; });
+  } catch(e) {}
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock=null; }
+  document.getElementById('wake-badge').style.display = 'none';
+}
+
+// ── Saved ──────────────────────────────────────────────────────────────────────
 function saveRecipe(jsonStr) {
   const r = JSON.parse(jsonStr);
   const saved = getSaved();
