@@ -430,7 +430,8 @@
 </div>
 
 <script>
-const API = '/extract'; // same origin
+// Client-side extraction — no backend required
+// Uses allorigins.win CORS proxy to fetch recipe pages
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 function switchTab(name) {
@@ -442,25 +443,119 @@ function switchTab(name) {
 }
 
 // ── Extract ───────────────────────────────────────────────────────────────────
+// ── Client-side recipe extraction ─────────────────────────────────────────────
+function cleanText(s) { return s ? s.replace(/\s+/g, ' ').trim() : ''; }
+
+function parseDuration(iso) {
+  if (!iso) return '';
+  const m = String(iso).match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return String(iso);
+  const parts = [];
+  if (m[1]) parts.push(m[1]+'h');
+  if (m[2]) parts.push(m[2]+'m');
+  if (m[3]) parts.push(m[3]+'s');
+  return parts.join(' ') || String(iso);
+}
+
+function extractJsonLd(doc, url) {
+  const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+  for (const s of scripts) {
+    let data;
+    try { data = JSON.parse(s.textContent || ''); } catch { continue; }
+    const items = (data?.['@graph'] ? data['@graph'] : Array.isArray(data) ? data : [data]);
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+      const type = [].concat(item['@type'] || []).join(' ');
+      if (!type.includes('Recipe')) continue;
+      const ings = [].concat(item.recipeIngredient || []).map(cleanText).filter(Boolean);
+      const rawSteps = [].concat(item.recipeInstructions || []);
+      const steps = rawSteps.flatMap(s => {
+        if (typeof s === 'string') return [cleanText(s)];
+        if (s?.['@type'] === 'HowToSection') return [].concat(s.itemListElement||[]).map(i=>cleanText(i.text||i.name||'')).filter(Boolean);
+        return [cleanText(s?.text || s?.name || '')];
+      }).filter(Boolean);
+      const img = [].concat(item.image||[])[0];
+      const imgUrl = typeof img === 'string' ? img : (img?.url || '');
+      const yld = [].concat(item.recipeYield || item.yield || [])[0] || '';
+      const cal = item.nutrition?.calories || '';
+      return {
+        title:      cleanText(item.name || ''),
+        description:cleanText(item.description || ''),
+        image:      imgUrl,
+        prep_time:  parseDuration(item.prepTime),
+        cook_time:  parseDuration(item.cookTime),
+        total_time: parseDuration(item.totalTime),
+        servings:   cleanText(String(yld)),
+        ingredients: ings,
+        steps,
+        calories:   cleanText(String(cal)),
+        source:     'json-ld',
+        url,
+        domain: new URL(url).hostname,
+      };
+    }
+  }
+  return null;
+}
+
+function extractHeuristic(doc, url) {
+  const hostname = new URL(url).hostname;
+  const title = (
+    doc.querySelector('h1')?.textContent ||
+    doc.querySelector('meta[property="og:title"]')?.content || hostname
+  ).trim();
+  const image = doc.querySelector('meta[property="og:image"]')?.content || '';
+  const ingEls = doc.querySelectorAll('[class*="ingredient"] li, [id*="ingredient"] li, .wprm-recipe-ingredient');
+  const ingredients = ingEls.length
+    ? [...ingEls].map(e => cleanText(e.textContent)).filter(t => t.length > 2)
+    : (() => {
+        for (const ul of doc.querySelectorAll('ul')) {
+          const items = [...ul.querySelectorAll('li')].map(l => cleanText(l.textContent)).filter(t => t.length > 3 && t.length < 200);
+          if (items.length >= 3 && items.length <= 30) return items;
+        }
+        return [];
+      })();
+  const stepEls = doc.querySelectorAll('[class*="instruction"] li, [class*="direction"] li, .wprm-recipe-instruction-text');
+  const steps = stepEls.length
+    ? [...stepEls].map(e => cleanText(e.textContent)).filter(t => t.length > 10)
+    : (() => {
+        for (const ol of doc.querySelectorAll('ol')) {
+          const items = [...ol.querySelectorAll('li')].map(l => cleanText(l.textContent)).filter(t => t.length > 10);
+          if (items.length >= 2) return items;
+        }
+        return [];
+      })();
+  return { title, description:'', image, prep_time:'', cook_time:'', total_time:'', servings:'', ingredients, steps, calories:'', source:'heuristic', url, domain: hostname };
+}
+
 async function doExtract() {
-  const url = document.getElementById('url-input').value.trim();
+  let url = document.getElementById('url-input').value.trim();
   if (!url) return;
-  const btn = document.getElementById('extract-btn');
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+  const btn  = document.getElementById('extract-btn');
   const area = document.getElementById('result-area');
   btn.disabled = true;
   btn.textContent = 'Extracting…';
   area.innerHTML = `<div class="status"><div class="spinner"></div><br>Fetching recipe…</div>`;
+
   try {
-    const resp = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Extraction failed');
-    renderRecipe(data, area);
+    // Use allorigins CORS proxy
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const resp = await fetch(proxyUrl);
+    if (!resp.ok) throw new Error(`Could not fetch page (HTTP ${resp.status})`);
+    const json = await resp.json();
+    if (!json.contents) throw new Error('No content returned from proxy');
+
+    const doc = new DOMParser().parseFromString(json.contents, 'text/html');
+    let recipe = extractJsonLd(doc, url) || extractHeuristic(doc, url);
+
+    if (!recipe?.title) throw new Error('Could not detect a recipe on this page');
+    if (!recipe.ingredients?.length && !recipe.steps?.length) throw new Error('Page found but no recipe content detected');
+
+    renderRecipe(recipe, area);
   } catch (e) {
-    area.innerHTML = `<div class="status error">⚠️ ${e.message}</div>`;
+    area.innerHTML = `<div class="status error">⚠️ ${e.message}<br><small style="color:var(--muted);margin-top:8px;display:block">Try a different recipe site, or check if the URL is correct.</small></div>`;
   } finally {
     btn.disabled = false;
     btn.textContent = 'Extract';
