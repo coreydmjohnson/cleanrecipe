@@ -398,7 +398,7 @@
 <!-- Extract page -->
 <div class="page active content" id="page-extract">
   <div class="extract-form">
-    <input type="url" id="url-input" placeholder="Paste a recipe URL…" autocomplete="off" autocorrect="off" spellcheck="false">
+    <input type="text" inputmode="url" id="url-input" placeholder="Paste a recipe URL…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
     <button class="btn" id="extract-btn" onclick="doExtract()">Extract</button>
   </div>
   <div id="result-area"></div>
@@ -540,14 +540,14 @@ async function doExtract() {
   area.innerHTML = `<div class="status"><div class="spinner"></div><br>Fetching recipe…</div>`;
 
   try {
-    // Use allorigins CORS proxy
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const resp = await fetch(proxyUrl);
+    // Use allorigins.win/raw — returns raw HTML, no JSON wrapper, reliable
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(20000) });
     if (!resp.ok) throw new Error(`Could not fetch page (HTTP ${resp.status})`);
-    const json = await resp.json();
-    if (!json.contents) throw new Error('No content returned from proxy');
+    const html = await resp.text();
+    if (!html || html.length < 100) throw new Error('Empty response from proxy');
 
-    const doc = new DOMParser().parseFromString(json.contents, 'text/html');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
     let recipe = extractJsonLd(doc, url) || extractHeuristic(doc, url);
 
     if (!recipe?.title) throw new Error('Could not detect a recipe on this page');
