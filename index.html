@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CleanRecipe — Just the recipe.</title>
+  <meta name="description" content="Paste any recipe URL. Get the recipe — no ads, no life story, no scroll.">
+  <style>
+    :root {
+      --bg: #fafaf8;
+      --surface: #ffffff;
+      --border: #e8e5e0;
+      --text: #1a1a18;
+      --muted: #6b6860;
+      --accent: #2d6a4f;
+      --accent-light: #d8f3dc;
+      --danger: #c53030;
+      --radius: 10px;
+      --shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* ── Header ── */
+    header {
+      padding: 20px 20px 0;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .wordmark {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.3px;
+    }
+    .tagline {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 16px 20px 0;
+      max-width: 720px;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      padding: 8px 16px;
+      border-radius: var(--radius) var(--radius) 0 0;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: var(--muted);
+      transition: color .15s;
+    }
+    .tab.active {
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-bottom: 1px solid var(--surface);
+      margin-bottom: -1px;
+    }
+    /* ── Pages ── */
+    .page { display: none; }
+    .page.active { display: block; }
+    .content { max-width: 720px; margin: 0 auto; padding: 24px 20px 60px; }
+    /* ── Extract form ── */
+    .extract-form {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .extract-form input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 15px;
+      background: var(--surface);
+      color: var(--text);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .extract-form input:focus { border-color: var(--accent); }
+    .extract-form input::placeholder { color: var(--muted); }
+    .btn {
+      padding: 12px 20px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: 0.88; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    /* ── Status ── */
+    .status {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .status.error { color: var(--danger); }
+    .spinner {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* ── Recipe card ── */
+    .recipe-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .recipe-hero {
+      width: 100%;
+      max-height: 280px;
+      object-fit: cover;
+      display: block;
+    }
+    .recipe-body { padding: 24px; }
+    .recipe-title {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 8px;
+      letter-spacing: -0.3px;
+    }
+    .recipe-source {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .recipe-source a { color: var(--accent); text-decoration: none; }
+    .recipe-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding: 14px 16px;
+      background: var(--accent-light);
+      border-radius: 8px;
+    }
+    .meta-item { font-size: 13px; }
+    .meta-label { color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+    .meta-value { font-weight: 600; color: var(--text); }
+    .recipe-desc {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: var(--muted);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ingredients-section { margin-bottom: 28px; }
+    .ingredient-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 6px;
+    }
+    .ingredient-list li {
+      font-size: 14px;
+      padding: 6px 0 6px 18px;
+      position: relative;
+      line-height: 1.4;
+    }
+    .ingredient-list li::before {
+      content: '·';
+      position: absolute;
+      left: 4px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .steps-section { margin-bottom: 24px; }
+    .step-list { list-style: none; counter-reset: steps; }
+    .step-list li {
+      counter-increment: steps;
+      display: flex;
+      gap: 14px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 15px;
+      line-height: 1.6;
+      align-items: flex-start;
+    }
+    .step-list li:last-child { border-bottom: none; }
+    .step-list li::before {
+      content: counter(steps);
+      min-width: 28px;
+      height: 28px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .recipe-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .btn-outline {
+      padding: 10px 18px;
+      background: none;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .btn-outline:hover { border-color: var(--accent); background: var(--accent-light); }
+    /* ── Saved recipes ── */
+    .saved-list { display: flex; flex-direction: column; gap: 12px; }
+    .saved-empty { color: var(--muted); font-size: 15px; text-align: center; padding: 40px 20px; }
+    .saved-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .saved-item:hover { border-color: var(--accent); }
+    .saved-thumb {
+      width: 56px; height: 56px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .saved-thumb-placeholder {
+      width: 56px; height: 56px;
+      border-radius: 8px;
+      background: var(--accent-light);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .saved-info { flex: 1; min-width: 0; }
+    .saved-title { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .saved-meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .saved-del { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 8px; font-size: 18px; flex-shrink: 0; }
+    .saved-del:hover { color: var(--danger); }
+    /* ── Print ── */
+    @media print {
+      header, .tabs, .extract-form, .recipe-actions, .page:not(.active) { display: none !important; }
+      .recipe-card { border: none; box-shadow: none; }
+      .recipe-body { padding: 0; }
+      body { background: white; }
+    }
+    /* ── Mobile ── */
+    @media (max-width: 520px) {
+      .extract-form { flex-direction: column; }
+      .recipe-title { font-size: 20px; }
+      .ingredient-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">🥦 CleanRecipe</div>
+  <div class="tagline">Just the recipe. No ads, no story.</div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('extract')">Extract</button>
+  <button class="tab" onclick="switchTab('saved')" id="saved-tab">My Recipes <span id="saved-count"></span></button>
+</div>
+
+<!-- Extract page -->
+<div class="page active content" id="page-extract">
+  <div class="extract-form">
+    <input type="url" id="url-input" placeholder="Paste a recipe URL…" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button class="btn" id="extract-btn" onclick="doExtract()">Extract</button>
+  </div>
+  <div id="result-area"></div>
+</div>
+
+<!-- Saved page -->
+<div class="page content" id="page-saved">
+  <div id="saved-list" class="saved-list"></div>
+</div>
+
+<script>
+const API = '/extract'; // same origin
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'saved') renderSaved();
+}
+
+// ── Extract ───────────────────────────────────────────────────────────────────
+async function doExtract() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) return;
+  const btn = document.getElementById('extract-btn');
+  const area = document.getElementById('result-area');
+  btn.disabled = true;
+  btn.textContent = 'Extracting…';
+  area.innerHTML = `<div class="status"><div class="spinner"></div><br>Fetching recipe…</div>`;
+  try {
+    const resp = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Extraction failed');
+    renderRecipe(data, area);
+  } catch (e) {
+    area.innerHTML = `<div class="status error">⚠️ ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Extract';
+  }
+}
+
+document.getElementById('url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doExtract();
+});
+
+// Paste from clipboard on mobile
+document.getElementById('url-input').addEventListener('paste', () => {
+  setTimeout(doExtract, 100);
+});
+
+// ── Render recipe ─────────────────────────────────────────────────────────────
+function renderRecipe(r, container) {
+  const metaItems = [
+    r.prep_time   && { label: 'Prep', value: r.prep_time },
+    r.cook_time   && { label: 'Cook', value: r.cook_time },
+    r.total_time  && { label: 'Total', value: r.total_time },
+    r.servings    && { label: 'Servings', value: r.servings },
+    r.calories    && { label: 'Calories', value: r.calories },
+  ].filter(Boolean);
+
+  const metaHTML = metaItems.length
+    ? `<div class="recipe-meta">${metaItems.map(m =>
+        `<div class="meta-item"><span class="meta-label">${m.label}</span><span class="meta-value">${esc(m.value)}</span></div>`
+      ).join('')}</div>`
+    : '';
+
+  const imgHTML = r.image
+    ? `<img class="recipe-hero" src="${esc(r.image)}" alt="${esc(r.title)}" onerror="this.style.display='none'">`
+    : '';
+
+  const descHTML = r.description
+    ? `<p class="recipe-desc">${esc(r.description)}</p>`
+    : '';
+
+  const ingredientsHTML = r.ingredients?.length
+    ? `<div class="ingredients-section">
+        <div class="section-title">Ingredients</div>
+        <ul class="ingredient-list">${r.ingredients.map(i => `<li>${esc(i)}</li>`).join('')}</ul>
+       </div>`
+    : '';
+
+  const stepsHTML = r.steps?.length
+    ? `<div class="steps-section">
+        <div class="section-title">Instructions</div>
+        <ol class="step-list">${r.steps.map(s => `<li><span>${esc(s)}</span></li>`).join('')}</ol>
+       </div>`
+    : '';
+
+  container.innerHTML = `
+    <div class="recipe-card" id="current-recipe">
+      ${imgHTML}
+      <div class="recipe-body">
+        <h1 class="recipe-title">${esc(r.title)}</h1>
+        <div class="recipe-source">From <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.domain)}</a></div>
+        ${metaHTML}
+        ${descHTML}
+        ${ingredientsHTML}
+        ${stepsHTML}
+        <div class="recipe-actions">
+          <button class="btn" onclick="saveRecipe(${JSON.stringify(JSON.stringify(r))})">💾 Save Recipe</button>
+          <button class="btn-outline" onclick="window.print()">🖨 Print</button>
+          <button class="btn-outline" onclick="document.getElementById('url-input').value='';document.getElementById('result-area').innerHTML=''">✕ Clear</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Local storage ─────────────────────────────────────────────────────────────
+function getSaved() {
+  try { return JSON.parse(localStorage.getItem('cleanrecipe_saved') || '[]'); } catch { return []; }
+}
+function setSaved(arr) {
+  localStorage.setItem('cleanrecipe_saved', JSON.stringify(arr));
+  updateSavedCount();
+}
+function updateSavedCount() {
+  const n = getSaved().length;
+  document.getElementById('saved-count').textContent = n ? `(${n})` : '';
+}
+updateSavedCount();
+
+function saveRecipe(jsonStr) {
+  const r = JSON.parse(jsonStr);
+  const saved = getSaved();
+  const exists = saved.findIndex(s => s.url === r.url);
+  if (exists >= 0) saved.splice(exists, 1);
+  r.saved_at = new Date().toISOString();
+  saved.unshift(r);
+  if (saved.length > 100) saved.splice(100);
+  setSaved(saved);
+  alert(`Saved: ${r.title}`);
+}
+
+function deleteRecipe(url) {
+  const saved = getSaved().filter(r => r.url !== url);
+  setSaved(saved);
+  renderSaved();
+}
+
+function loadSaved(url) {
+  const r = getSaved().find(s => s.url === url);
+  if (!r) return;
+  switchTabByName('extract');
+  document.getElementById('url-input').value = r.url;
+  renderRecipe(r, document.getElementById('result-area'));
+  window.scrollTo(0, 0);
+}
+
+function switchTabByName(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && name === 'extract') || (i === 1 && name === 'saved'));
+  });
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+}
+
+function renderSaved() {
+  const saved = getSaved();
+  const el = document.getElementById('saved-list');
+  if (!saved.length) {
+    el.innerHTML = '<div class="saved-empty">No saved recipes yet.<br>Extract one and hit Save.</div>';
+    return;
+  }
+  el.innerHTML = saved.map(r => `
+    <div class="saved-item" onclick="loadSaved(${JSON.stringify(r.url)})">
+      ${r.image
+        ? `<img class="saved-thumb" src="${esc(r.image)}" alt="" onerror="this.style.display='none'">`
+        : `<div class="saved-thumb-placeholder">🍽</div>`}
+      <div class="saved-info">
+        <div class="saved-title">${esc(r.title)}</div>
+        <div class="saved-meta">${esc(r.domain)}${r.total_time ? ' · ' + esc(r.total_time) : ''}${r.servings ? ' · ' + esc(r.servings) + ' servings' : ''}</div>
+      </div>
+      <button class="saved-del" onclick="event.stopPropagation(); deleteRecipe(${JSON.stringify(r.url)})" title="Remove">×</button>
+    </div>
+  `).join('');
+}
+</script>
+
+</body>
+</html>
